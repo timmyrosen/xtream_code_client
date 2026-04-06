@@ -1,5 +1,8 @@
 /// Converts a string of seconds since Epoch (1970-01-01T00:00:00Z) to a
 /// [DateTime].
+/// Also handles ISO 8601 date strings for round-trip compatibility (since
+/// `toJson` serializes DateTime as ISO 8601 but `fromJson` expects epoch
+/// seconds from the API).
 /// Returns null if [seconds] is null or empty.
 DateTime? dateTimeFromEpochSeconds(dynamic seconds) {
   if (seconds == null) {
@@ -13,6 +16,10 @@ DateTime? dateTimeFromEpochSeconds(dynamic seconds) {
       return null;
     }
     epochSeconds = int.tryParse(seconds);
+    // Fallback: try parsing as ISO 8601 string (from round-tripped toJson)
+    if (epochSeconds == null) {
+      return DateTime.tryParse(seconds);
+    }
   } else if (seconds is num) {
     epochSeconds = seconds.toInt();
   }

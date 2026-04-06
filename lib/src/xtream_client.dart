@@ -1,13 +1,20 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart';
+import 'package:http/http.dart' as http show get;
 import 'package:xtream_code_client/xtream_code_client.dart';
 
 /// Top-level function for parsing EPG XML in an isolate
 /// Must be top-level or static to be used with compute()
-EPG _parseEpgXml(String xmlString) {
+EPG _parseEpgXml((String xmlString, bool includeChannels) args) {
+  final stopwatch = Stopwatch()..start();
   final parser = EpgParser();
-  return parser.parse(xmlString);
+  final result = parser.parse(args.$1, includeChannels: args.$2);
+  stopwatch.stop();
+  debugPrint(
+    '_parseEpgXml: Parsing took ${stopwatch.elapsedMilliseconds}ms, resulting in ${result.channels.length} channels and ${result.programmes.length} programmes',
+  );
+  return result;
 }
 
 /// Top-level function for parsing categories JSON in an isolate
@@ -310,22 +317,47 @@ class XtreamCodeClient {
     }
   }
 
+  /// Constructs and returns the EPG URL in XMLTV format.
+  Uri getEpgUrl() {
+    final uri = Uri.parse(_baseUrl.replaceFirst(_path, 'xmltv.php'));
+    return uri;
+  }
+
   /// Retrieves the EPG (Electronic Program Guide) data in XMLTV format.
   /// If useLocalFile is true, it reads from the local 'iptv.xml' file
   /// instead of making an API call.
   ///
   /// Uses compute() to parse the XML in a background isolate to prevent UI freezing
   /// when processing large EPG data (200k+ programmes).
-  Future<EPG> epg() async {
-    final uri = Uri.parse(_baseUrl.replaceFirst(_path, 'xmltv.php'));
+  Future<EPG> epg({String? epgUrl}) async {
+    final totalStopwatch = Stopwatch()..start();
+
+    final fetchStopwatch = Stopwatch()..start();
+    final uri = epgUrl != null ? Uri.parse(epgUrl) : getEpgUrl();
     final response = await _http.get(uri);
+    fetchStopwatch.stop();
+    debugPrint(
+      'XtreamClient: HTTP fetch took ${fetchStopwatch.elapsedMilliseconds}ms, body size: ${response.body.length} bytes',
+    );
 
     if (response.statusCode == 200) {
       final xmlString = response.body;
 
       // Parse XML in background isolate to prevent UI freezing
       // This is critical for large EPG files with 200k+ programmes
-      return compute(_parseEpgXml, xmlString);
+      final parseStopwatch = Stopwatch()..start();
+      final result = await compute(_parseEpgXml, (xmlString, false));
+      parseStopwatch.stop();
+      debugPrint(
+        'XtreamClient: XML parsing (in isolate) took ${parseStopwatch.elapsedMilliseconds}ms',
+      );
+
+      totalStopwatch.stop();
+      debugPrint(
+        'XtreamClient: Total EPG fetch took ${totalStopwatch.elapsedMilliseconds}ms',
+      );
+
+      return result;
     } else {
       throw XTreamCodeClientException(
         'Failed to fetch XMLTV data. Server responded with status code ${response.statusCode}.',
@@ -349,5 +381,87 @@ class XtreamCodeClient {
         ''',
       );
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Raw JSON body methods
+  // ---------------------------------------------------------------------------
+  // These return the raw JSON response body as a String, avoiding the
+  // compute() isolate round-trip that copies 49K–158K parsed model objects
+  // back to the calling isolate. Callers can parse the JSON inline while
+  // building SQL args, eliminating the cross-isolate serialization cost.
+
+  /// Fetches live stream items and returns the raw JSON response body.
+  Future<String> livestreamItemsRawJson({
+    XTremeCodeCategory? category,
+  }) async {
+    var action = 'get_live_streams';
+    if (category != null) {
+      action = '$action&category_id=${category.categoryId}';
+    }
+    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
+    if (response.statusCode == 200) {
+      return response.body;
+    } else {
+      throw XTreamCodeClientException(
+        'Failed to retrieve LiveStreams from action $action. '
+        'Server responded with the error code ${response.statusCode}.',
+      );
+    }
+  }
+
+  /// Fetches VOD items and returns the raw JSON response body.
+  Future<String> vodItemsRawJson({
+    XTremeCodeCategory? category,
+  }) async {
+    var action = 'get_vod_streams';
+    if (category != null) {
+      action = '$action&category_id=${category.categoryId}';
+    }
+    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
+    if (response.statusCode == 200) {
+      return response.body;
+    } else {
+      throw XTreamCodeClientException(
+        'Failed to retrieve Vods from action $action. '
+        'Server responded with the error code ${response.statusCode}.',
+      );
+    }
+  }
+
+  /// Fetches series items and returns the raw JSON response body.
+  Future<String> seriesItemsRawJson({
+    XTremeCodeCategory? category,
+  }) async {
+    var action = 'get_series';
+    if (category != null) {
+      action = '$action&category_id=${category.categoryId}';
+    }
+    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
+    if (response.statusCode == 200) {
+      return response.body;
+    } else {
+      throw XTreamCodeClientException(
+        'Failed to retrieve Series from action $action. '
+        'Server responded with the error code ${response.statusCode}.',
+      );
+    }
+  }
+}
+
+// Fetches EPG data from a given URL and parses it.
+Future<EPG> getEpgByUrl({required String url}) async {
+  final response = await http.get(Uri.parse(url));
+
+  if (response.statusCode == 200) {
+    final xmlString = response.body;
+
+    final result = await compute(_parseEpgXml, (xmlString, true));
+
+    return result;
+  } else {
+    throw XTreamCodeClientException(
+      'Failed to fetch XMLTV data. Server responded with status code ${response.statusCode}.',
+    );
   }
 }
