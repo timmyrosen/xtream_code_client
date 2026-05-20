@@ -93,7 +93,7 @@ class XtreamCodeClient {
 
   /// The base URL getter for streaming a channel.
   String streamUrl(int id, List<String> allowedInputFormat) =>
-      '$_streamUrl/$id.${allowedInputFormat.firstWhere((format) => format == 'ts', orElse: () => allowedInputFormat.first)}';
+      '$_streamPlaylistM3uUrl/$id.${allowedInputFormat.firstWhere((format) => format == 'ts', orElse: () => allowedInputFormat.first)}';
 
   String liveStreamM3uPlaylistUrl(int id) {
     final url = '$_streamPlaylistM3uUrl/$id.m3u8';
