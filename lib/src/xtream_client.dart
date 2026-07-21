@@ -1,4 +1,7 @@
 import 'package:http/http.dart';
+import 'package:http/http.dart' as http;
+import 'package:xtream_code_client/src/epg_parser.dart';
+import 'package:xtream_code_client/src/exception/xtream_code_client_exception.dart';
 import 'package:xtream_code_client/src/model/category.dart';
 import 'package:xtream_code_client/src/model/channel_epg.dart';
 import 'package:xtream_code_client/src/model/channel_epg_table.dart';
@@ -9,7 +12,15 @@ import 'package:xtream_code_client/src/model/series_info.dart';
 import 'package:xtream_code_client/src/model/series_items.dart';
 import 'package:xtream_code_client/src/model/vod_info.dart';
 import 'package:xtream_code_client/src/model/vod_items.dart';
+import 'package:xtream_code_client/src/v2/client/parse_jobs.dart';
 import 'package:xtream_code_client/src/v2/compat/legacy_xtream_client.dart';
+import 'package:xtream_code_client/src/v2/core/parse_executor.dart';
+import 'package:xtream_code_client/src/v2/core/parse_executor_default.dart';
+import 'package:xtream_code_client/src/v2/core/parser_options.dart';
+
+EPG _parseFullEpgWithChannels(String xml) {
+  return EpgParser().parse(xml, includeChannels: true);
+}
 
 /// Legacy API wrapper. Prefer `XtreamClient` from `src/v2/client`.
 @Deprecated('Use XtreamClient from src/v2/client/xtream_client.dart')
@@ -109,4 +120,27 @@ class XtreamCodeClient {
 
   /// Loads full XMLTV EPG.
   Future<EPG> epg() => _delegate.epg();
+}
+
+/// Fetches and parses XMLTV EPG data from an arbitrary URL.
+Future<EPG> getEpgByUrl({
+  required String url,
+  bool includeChannels = true,
+  ParserOptions parserOptions = const ParserOptions(),
+  ParseExecutor parseExecutor = const DefaultParseExecutor(),
+}) async {
+  final response = await http.get(Uri.parse(url));
+  if (response.statusCode != 200) {
+    throw XTreamCodeClientException(
+      'Failed to fetch XMLTV data. Server responded with status code ${response.statusCode}.',
+    );
+  }
+
+  return parseExecutor.execute<String, EPG>(
+    input: response.body,
+    job: includeChannels ? _parseFullEpgWithChannels : parseFullEpg,
+    options: parserOptions,
+    payloadType: ParsePayloadType.xml,
+    payloadBytes: response.bodyBytes.length,
+  );
 }

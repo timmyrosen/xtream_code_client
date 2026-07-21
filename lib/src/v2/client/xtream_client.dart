@@ -98,6 +98,9 @@ class XtreamClient {
   /// Fully resolved player API base URL with credentials.
   String get baseUrl => _playerApiUri.toString();
 
+  /// Fully resolved XMLTV EPG URI with credentials.
+  Uri get epgUri => _xmltvUri;
+
   /// Builds a live stream playback URL for a stream [id].
   ///
   /// Prefers `ts` when it is present in [allowedInputFormat].
@@ -109,7 +112,7 @@ class XtreamClient {
   /// Builds a timeshift playback URL for a live stream [streamId].
   ///
   /// The duration is encoded as total minutes and the start is formatted as
-  /// `yyyy-MM-dd:HH-mm` in UTC to match common Xtream-compatible endpoints.
+  /// `yyyy-MM-dd:HH-mm` using the supplied programme wall time.
   ///
   /// Throws [RequestException] when credentials cannot be inferred from the
   /// resolved stream URL.
@@ -134,20 +137,26 @@ class XtreamClient {
         'Unable to infer stream base path for timeshift URL generation.',
       );
     }
-    final rootPathSegments = segments.sublist(0, segments.length - 2);
+    final credentialsStart = segments.length - 2;
+    final rootPathEnd = credentialsStart > 0 &&
+            segments[credentialsStart - 1].toLowerCase() == 'live'
+        ? credentialsStart - 1
+        : credentialsStart;
+    final rootPathSegments = segments.sublist(0, rootPathEnd);
     final root = _streamBaseUri.replace(
       pathSegments: rootPathSegments,
       queryParameters: const <String, String>{},
       fragment: '',
     );
 
-    final minutes = duration.inMinutes <= 0 ? 1 : duration.inMinutes;
-    final utcStart = start.toUtc();
-    final formattedStart = '${utcStart.year.toString().padLeft(4, '0')}-'
-        '${utcStart.month.toString().padLeft(2, '0')}-'
-        '${utcStart.day.toString().padLeft(2, '0')}:'
-        '${utcStart.hour.toString().padLeft(2, '0')}-'
-        '${utcStart.minute.toString().padLeft(2, '0')}';
+    final minutes =
+        duration.inSeconds <= 0 ? 1 : (duration.inSeconds + 59) ~/ 60;
+    final localStart = start.toLocal();
+    final formattedStart = '${localStart.year.toString().padLeft(4, '0')}-'
+        '${localStart.month.toString().padLeft(2, '0')}-'
+        '${localStart.day.toString().padLeft(2, '0')}:'
+        '${localStart.hour.toString().padLeft(2, '0')}-'
+        '${localStart.minute.toString().padLeft(2, '0')}';
 
     final path =
         'timeshift/${credentials.username}/${credentials.password}/$minutes/'
@@ -304,9 +313,32 @@ class XtreamClient {
     );
   }
 
+  /// Loads full VOD info by stream id.
+  Future<ApiResult<VodInfo>> vodInfoByStreamId(Object streamId) {
+    final id = streamId.toString();
+    if (id.isEmpty) {
+      throw const RequestException(
+        'streamId is required for vodInfo requests.',
+      );
+    }
+
+    return _requestJson(
+      uri: _actionUri(
+        'get_vod_info',
+        extraQuery: <String, String>{'vod_id': id},
+      ),
+      parser: parseVodInfo,
+    );
+  }
+
   /// Convenience version of [vodInfo] that returns only `data`.
   Future<VodInfo> vodInfoData(VodItem vod) async {
     return (await vodInfo(vod)).data;
+  }
+
+  /// Convenience version of [vodInfoByStreamId] that returns only `data`.
+  Future<VodInfo> vodInfoByStreamIdData(Object streamId) async {
+    return (await vodInfoByStreamId(streamId)).data;
   }
 
   /// Loads series items, optionally filtered by [category].
@@ -352,9 +384,32 @@ class XtreamClient {
     );
   }
 
+  /// Loads full series info by series id.
+  Future<ApiResult<SeriesInfo>> seriesInfoById(Object seriesId) {
+    final id = seriesId.toString();
+    if (id.isEmpty) {
+      throw const RequestException(
+        'seriesId is required for seriesInfo requests.',
+      );
+    }
+
+    return _requestJson(
+      uri: _actionUri(
+        'get_series_info',
+        extraQuery: <String, String>{'series_id': id},
+      ),
+      parser: parseSeriesInfo,
+    );
+  }
+
   /// Convenience version of [seriesInfo] that returns only `data`.
   Future<SeriesInfo> seriesInfoData(SeriesItem series) async {
     return (await seriesInfo(series)).data;
+  }
+
+  /// Convenience version of [seriesInfoById] that returns only `data`.
+  Future<SeriesInfo> seriesInfoByIdData(Object seriesId) async {
+    return (await seriesInfoById(seriesId)).data;
   }
 
   /// Loads short EPG data for a stream item.
@@ -433,23 +488,29 @@ class XtreamClient {
   }
 
   /// Loads full XMLTV EPG and parses it into [EPG].
-  Future<ApiResult<EPG>> epg() {
-    return _requestXml(uri: _xmltvUri, parser: parseFullEpg);
+  Future<ApiResult<EPG>> epg({String? epgUrl}) {
+    return _requestXml(
+      uri: epgUrl == null ? _xmltvUri : Uri.parse(epgUrl),
+      parser: parseFullEpg,
+    );
   }
 
   /// Convenience version of [epg] that returns only `data`.
-  Future<EPG> epgData() async {
-    return (await epg()).data;
+  Future<EPG> epgData({String? epgUrl}) async {
+    return (await epg(epgUrl: epgUrl)).data;
   }
 
   /// Loads XMLTV and parses a lightweight EPG model.
-  Future<ApiResult<EpgLite>> epgLite() {
-    return _requestXml(uri: _xmltvUri, parser: parseLiteEpg);
+  Future<ApiResult<EpgLite>> epgLite({String? epgUrl}) {
+    return _requestXml(
+      uri: epgUrl == null ? _xmltvUri : Uri.parse(epgUrl),
+      parser: parseLiteEpg,
+    );
   }
 
   /// Convenience version of [epgLite] that returns only `data`.
-  Future<EpgLite> epgLiteData() async {
-    return (await epgLite()).data;
+  Future<EpgLite> epgLiteData({String? epgUrl}) async {
+    return (await epgLite(epgUrl: epgUrl)).data;
   }
 
   /// Closes the underlying HTTP client.
@@ -664,7 +725,7 @@ class _ResolvedUrls {
           .replace(queryParameters: authQuery),
       playlistUri: XtreamClient._appendPath(root, endpointConfig.playlistPath)
           .replace(queryParameters: authQuery),
-      streamBaseUri: XtreamClient._appendPath(root, '$username/$password'),
+      streamBaseUri: XtreamClient._appendPath(root, 'live/$username/$password'),
       movieBaseUri: XtreamClient._appendPath(root, 'movie/$username/$password'),
       seriesBaseUri:
           XtreamClient._appendPath(root, 'series/$username/$password'),
