@@ -1,467 +1,146 @@
-import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart';
-import 'package:http/http.dart' as http show get;
-import 'package:xtream_code_client/xtream_code_client.dart';
+import 'package:http/http.dart' as http;
+import 'package:xtream_code_client/src/epg_parser.dart';
+import 'package:xtream_code_client/src/exception/xtream_code_client_exception.dart';
+import 'package:xtream_code_client/src/model/category.dart';
+import 'package:xtream_code_client/src/model/channel_epg.dart';
+import 'package:xtream_code_client/src/model/channel_epg_table.dart';
+import 'package:xtream_code_client/src/model/epg/epg.dart';
+import 'package:xtream_code_client/src/model/general_information.dart';
+import 'package:xtream_code_client/src/model/live_stream_items.dart';
+import 'package:xtream_code_client/src/model/series_info.dart';
+import 'package:xtream_code_client/src/model/series_items.dart';
+import 'package:xtream_code_client/src/model/vod_info.dart';
+import 'package:xtream_code_client/src/model/vod_items.dart';
+import 'package:xtream_code_client/src/v2/client/parse_jobs.dart';
+import 'package:xtream_code_client/src/v2/compat/legacy_xtream_client.dart';
+import 'package:xtream_code_client/src/v2/core/parse_executor.dart';
+import 'package:xtream_code_client/src/v2/core/parse_executor_default.dart';
+import 'package:xtream_code_client/src/v2/core/parser_options.dart';
 
-/// Top-level function for parsing EPG XML in an isolate
-/// Must be top-level or static to be used with compute()
-EPG _parseEpgXml((String xmlString, bool includeChannels) args) {
-  final stopwatch = Stopwatch()..start();
-  final parser = EpgParser();
-  final result = parser.parse(args.$1, includeChannels: args.$2);
-  stopwatch.stop();
-  debugPrint(
-    '_parseEpgXml: Parsing took ${stopwatch.elapsedMilliseconds}ms, resulting in ${result.channels.length} channels and ${result.programmes.length} programmes',
-  );
-  return result;
+EPG _parseFullEpgWithChannels(String xml) {
+  return EpgParser().parse(xml, includeChannels: true);
 }
 
-/// Top-level function for parsing categories JSON in an isolate
-List<XTremeCodeCategory> _parseCategories(String jsonString) {
-  final parsed = json.decode(jsonString);
-  return (parsed is List ? parsed : <dynamic>[])
-      .cast<Map<String, dynamic>>()
-      .map<XTremeCodeCategory>(XTremeCodeCategory.fromJson)
-      .toList();
-}
-
-/// Top-level function for parsing live streams JSON in an isolate
-List<XTremeCodeLiveStreamItem> _parseLiveStreams(String jsonString) {
-  final parsed = json.decode(jsonString);
-  return (parsed is List ? parsed : <dynamic>[])
-      .cast<Map<String, dynamic>>()
-      .map<XTremeCodeLiveStreamItem>(XTremeCodeLiveStreamItem.fromJson)
-      .toList();
-}
-
-/// Top-level function for parsing VOD items JSON in an isolate
-List<XTremeCodeVodItem> _parseVodItems(String jsonString) {
-  final parsed = json.decode(jsonString);
-  return (parsed is List ? parsed : <dynamic>[])
-      .cast<Map<String, dynamic>>()
-      .map<XTremeCodeVodItem>(XTremeCodeVodItem.fromJson)
-      .toList();
-}
-
-/// Top-level function for parsing series items JSON in an isolate
-List<XTremeCodeSeriesItem> _parseSeriesItems(String jsonString) {
-  final parsed = json.decode(jsonString);
-  return (parsed is List ? parsed : <dynamic>[])
-      .cast<Map<String, dynamic>>()
-      .map<XTremeCodeSeriesItem>(XTremeCodeSeriesItem.fromJson)
-      .toList();
-}
-
-/// A client for interacting with Xtream Code server.
+/// Legacy API wrapper. Prefer `XtreamClient` from `src/v2/client`.
+@Deprecated('Use XtreamClient from src/v2/client/xtream_client.dart')
 class XtreamCodeClient {
-  /// Constructs an instance of [XtreamCodeClient].
+  /// Creates a legacy API client that delegates to v2 internals.
   XtreamCodeClient(
-    this._baseUrl,
-    this._streamUrl,
-    this._streamPlaylistM3uUrl,
-    this._movieUrl,
-    this._seriesUrl,
-    this._http,
-    this._path,
-  );
+    String baseUrl,
+    String streamUrl,
+    String movieUrl,
+    String seriesUrl,
+    Client httpClient,
+  ) : _delegate = LegacyXtreamCodeClient(
+          baseUrl: baseUrl,
+          streamUrl: streamUrl,
+          movieUrl: movieUrl,
+          seriesUrl: seriesUrl,
+          httpClient: httpClient,
+        );
 
-  /// The base URL of the Xtream Code server.
-  final String _baseUrl;
+  final LegacyXtreamCodeClient _delegate;
 
-  /// The path to the Xtream Code API endpoint.
-  /// Defaults to 'player_api.php'.
-  final String _path;
+  /// Legacy player API URL with embedded credentials.
+  String get baseUrl => _delegate.baseUrl;
 
-  /// The _http client for making requests to the server.
-  final Client _http;
-
-  /// Base URL for streaming a movie.
-  final String _movieUrl;
-
-  /// Base URL for streaming a series.
-  final String _seriesUrl;
-
-  /// Base URL for streaming a channel.
-  final String _streamUrl;
-
-  /// Base URL for streaming a channel's M3U playlist.
-  final String _streamPlaylistM3uUrl;
-
-  /// The base URL getter of the Xtream Code server.
-  String get baseUrl => _baseUrl;
-
-  /// The base URL getter for streaming a channel.
+  /// Builds a live stream playback URL.
   String streamUrl(int id, List<String> allowedInputFormat) =>
-      '$_streamPlaylistM3uUrl/$id.${allowedInputFormat.firstWhere((format) => format == 'ts', orElse: () => allowedInputFormat.first)}';
+      _delegate.streamUrl(id, allowedInputFormat);
 
-  String liveStreamM3uPlaylistUrl(int id) {
-    final url = '$_streamPlaylistM3uUrl/$id.m3u8';
-    return url;
-  }
-
-  /// The base URL getter for streaming a movie.
+  /// Builds a movie playback URL.
   String movieUrl(int id, String containerExtension) =>
-      '$_movieUrl/$id.$containerExtension';
+      _delegate.movieUrl(id, containerExtension);
 
-  /// The base URL getter for streaming a series.
+  /// Builds a series playback URL.
   String seriesUrl(int id, String containerExtension) =>
-      '$_seriesUrl/$id.$containerExtension';
+      _delegate.seriesUrl(id, containerExtension);
 
-  /// Authenticates the user and retrieves server & user information.
-  Future<XTremeCodeGeneralInformation> serverInformation() async {
-    final response = await _http.get(
-      Uri.parse(
-        _baseUrl,
-      ),
-    );
+  /// Loads account and server information.
+  Future<XTremeCodeGeneralInformation> serverInformation() =>
+      _delegate.serverInformation();
 
-    if (response.statusCode == 200) {
-      final parsed = json.decode(response.body) as Map<String, dynamic>;
-      return XTremeCodeGeneralInformation.fromJson(parsed);
-    } else {
-      throw XTreamCodeClientException(
-        '''
-        Failed to retrieve GeneralInformation. Server responded with 
-        the error code ${response.statusCode}.
-        ''',
-      );
-    }
-  }
+  /// Loads live stream categories.
+  Future<List<XTremeCodeCategory>> liveStreamCategories() =>
+      _delegate.liveStreamCategories();
 
-  /// Retrieves live stream categories.
-  Future<List<XTremeCodeCategory>> liveStreamCategories() async {
-    const action = 'get_live_categories';
-    return _categories(action);
-  }
+  /// Loads VOD categories.
+  Future<List<XTremeCodeCategory>> vodCategories() => _delegate.vodCategories();
 
-  /// Retrieves VOD categories.
-  Future<List<XTremeCodeCategory>> vodCategories() async {
-    const action = 'get_vod_categories';
-    return _categories(action);
-  }
+  /// Loads series categories.
+  Future<List<XTremeCodeCategory>> seriesCategories() =>
+      _delegate.seriesCategories();
 
-  /// Retrieves series categories.
-  Future<List<XTremeCodeCategory>> seriesCategories() async {
-    const action = 'get_series_categories';
-    return _categories(action);
-  }
-
-  /// Retrieves live stream items based on the optional category parameter.
-  /// Uses compute() to parse JSON in a background isolate for better performance.
+  /// Loads live stream items, optionally filtered by category.
   Future<List<XTremeCodeLiveStreamItem>> livestreamItems({
     XTremeCodeCategory? category,
-  }) async {
-    var action = 'get_live_streams';
-    if (category != null) {
-      action = '$action&category_id=${category.categoryId}';
-    }
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
+  }) =>
+      _delegate.livestreamItems(category: category);
 
-    if (response.statusCode == 200) {
-      // Parse JSON in background isolate to prevent UI freezing
-      return compute(_parseLiveStreams, response.body);
-    } else {
-      throw XTreamCodeClientException(
-        '''
-        Failed to retrieve LiveStreams from action $action.
-        Server responded with the error code ${response.statusCode}.
-        ''',
-      );
-    }
-  }
-
-  /// Retrieves VOD items based on the optional category parameter.
-  /// Uses compute() to parse JSON in a background isolate for better performance.
+  /// Loads VOD items, optionally filtered by category.
   Future<List<XTremeCodeVodItem>> vodItems({
     XTremeCodeCategory? category,
-  }) async {
-    var action = 'get_vod_streams';
-    if (category != null) {
-      action = '$action&category_id=${category.categoryId}';
-    }
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
+  }) =>
+      _delegate.vodItems(category: category);
 
-    if (response.statusCode == 200) {
-      // Parse JSON in background isolate to prevent UI freezing
-      return compute(_parseVodItems, response.body);
-    } else {
-      throw XTreamCodeClientException(
-        '''
-        Failed to retrieve Vods from action $action.
-        Server responded with the error code ${response.statusCode}.
-        ''',
-      );
-    }
-  }
+  /// Loads detailed VOD metadata.
+  Future<XTremeCodeVodInfo> vodInfo(XTremeCodeVodItem vod) =>
+      _delegate.vodInfo(vod);
 
-  /// Retrieves information about a specific VOD item.
-  Future<XTremeCodeVodInfo> vodInfo(XTremeCodeVodItem vod) async {
-    return vodInfoByStreamId(vod.streamId?.toString() ?? '');
-  }
-
-  /// Retrieves information about a specific VOD item.
-  Future<XTremeCodeVodInfo> vodInfoByStreamId(String streamId) async {
-    final action = 'get_vod_info&vod_id=$streamId';
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
-
-    if (response.statusCode == 200) {
-      final parsed = json.decode(response.body) as Map<String, dynamic>;
-      return XTremeCodeVodInfo.fromJson(parsed);
-    } else {
-      throw XTreamCodeClientException(
-        '''
-        Failed to retrieve VOD Info from action $action.
-        Server responded with the error code ${response.statusCode}.
-        ''',
-      );
-    }
-  }
-
-  /// Retrieves series items based on the optional category parameter.
-  /// Uses compute() to parse JSON in a background isolate for better performance.
+  /// Loads series items, optionally filtered by category.
   Future<List<XTremeCodeSeriesItem>> seriesItems({
     XTremeCodeCategory? category,
-  }) async {
-    var action = 'get_series';
-    if (category != null) {
-      action = '$action&category_id=${category.categoryId}';
-    }
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
+  }) =>
+      _delegate.seriesItems(category: category);
 
-    if (response.statusCode == 200) {
-      // Parse JSON in background isolate to prevent UI freezing
-      return compute(_parseSeriesItems, response.body);
-    } else {
-      throw XTreamCodeClientException(
-        '''
-        Failed to retrieve Series from action $action.
-        Server responded with the error code ${response.statusCode}.
-        ''',
-      );
-    }
-  }
+  /// Loads detailed series metadata.
+  Future<XTremeCodeSeriesInfo> seriesInfo(XTremeCodeSeriesItem series) =>
+      _delegate.seriesInfo(series);
 
-  /// Retrieves information about a specific series item.
-  Future<XTremeCodeSeriesInfo> seriesInfo(XTremeCodeSeriesItem series) async {
-    return seriesInfoById(series.seriesId.toString());
-  }
-
-  /// Retrieves information about a specific series item by its ID.
-  Future<XTremeCodeSeriesInfo> seriesInfoById(String seriesId) async {
-    final action = 'get_series_info&series_id=$seriesId';
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
-
-    if (response.statusCode == 200) {
-      final parsed = json.decode(response.body) as Map<String, dynamic>;
-      return XTremeCodeSeriesInfo.fromJson(parsed);
-    } else {
-      throw XTreamCodeClientException(
-        '''
-        Failed to retrieve Series Info from action $action.
-        Server responded with the error code ${response.statusCode}.
-        ''',
-      );
-    }
-  }
-
-  /// Retrieves EPG information for a specific live stream item.
+  /// Loads short EPG entries for a stream item.
   Future<XTremeCodeChannelEpg> channelEpg(
     XTremeCodeLiveStreamItem item,
     int? limit,
-  ) async {
-    return channelEpgViaStreamId(item.streamId!, limit);
-  }
+  ) =>
+      _delegate.channelEpg(item, limit);
 
-  /// Retrieves EPG information for a specific live stream item.
+  /// Loads short EPG entries directly by stream id.
   Future<XTremeCodeChannelEpg> channelEpgViaStreamId(
     int streamId,
     int? limit,
-  ) async {
-    var action = 'get_short_epg&stream_id=$streamId';
-    if (limit != null) {
-      action = '$action&limit=$limit';
-    }
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
+  ) =>
+      _delegate.channelEpgViaStreamId(streamId, limit);
 
-    if (response.statusCode == 200) {
-      final parsed = json.decode(response.body) as Map<String, dynamic>;
-      return XTremeCodeChannelEpg.fromJson(parsed);
-    } else {
-      throw XTreamCodeClientException(
-        '''
-        Failed to retrieve EPG from action $action for channel_id $streamId
-        Server responded with the error code ${response.statusCode}.
-        ''',
-      );
-    }
-  }
-
-  /// Retrieves EPG table for a specific live stream item.
+  /// Loads simple EPG table entries for a stream item.
   Future<XTremeCodeChannelEpgTable> channelEpgTable(
     XTremeCodeLiveStreamItem item,
-  ) async {
-    final action = 'get_simple_data_table&stream_id=${item.streamId}';
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
+  ) =>
+      _delegate.channelEpgTable(item);
 
-    if (response.statusCode == 200) {
-      final parsed = json.decode(response.body) as Map<String, dynamic>;
-      return XTremeCodeChannelEpgTable.fromJson(parsed);
-    } else {
-      throw XTreamCodeClientException(
-        '''
-        Failed to retrieve EPG Table from action $action for channel_id ${item.streamId}
-        Server responded with the error code ${response.statusCode}.
-        ''',
-      );
-    }
-  }
-
-  /// Constructs and returns the EPG URL in XMLTV format.
-  Uri getEpgUrl() {
-    final uri = Uri.parse(_baseUrl.replaceFirst(_path, 'xmltv.php'));
-    return uri;
-  }
-
-  /// Retrieves the EPG (Electronic Program Guide) data in XMLTV format.
-  /// If useLocalFile is true, it reads from the local 'iptv.xml' file
-  /// instead of making an API call.
-  ///
-  /// Uses compute() to parse the XML in a background isolate to prevent UI freezing
-  /// when processing large EPG data (200k+ programmes).
-  Future<EPG> epg({String? epgUrl}) async {
-    final totalStopwatch = Stopwatch()..start();
-
-    final fetchStopwatch = Stopwatch()..start();
-    final uri = epgUrl != null ? Uri.parse(epgUrl) : getEpgUrl();
-    final response = await _http.get(uri);
-    fetchStopwatch.stop();
-    debugPrint(
-      'XtreamClient: HTTP fetch took ${fetchStopwatch.elapsedMilliseconds}ms, body size: ${response.body.length} bytes',
-    );
-
-    if (response.statusCode == 200) {
-      final xmlString = response.body;
-
-      // Parse XML in background isolate to prevent UI freezing
-      // This is critical for large EPG files with 200k+ programmes
-      final parseStopwatch = Stopwatch()..start();
-      final result = await compute(_parseEpgXml, (xmlString, false));
-      parseStopwatch.stop();
-      debugPrint(
-        'XtreamClient: XML parsing (in isolate) took ${parseStopwatch.elapsedMilliseconds}ms',
-      );
-
-      totalStopwatch.stop();
-      debugPrint(
-        'XtreamClient: Total EPG fetch took ${totalStopwatch.elapsedMilliseconds}ms',
-      );
-
-      return result;
-    } else {
-      throw XTreamCodeClientException(
-        'Failed to fetch XMLTV data. Server responded with status code ${response.statusCode}.',
-      );
-    }
-  }
-
-  /// Common method for retrieving categories based on the given action.
-  /// Uses compute() to parse JSON in a background isolate for better performance.
-  Future<List<XTremeCodeCategory>> _categories(String action) async {
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
-
-    if (response.statusCode == 200) {
-      // Parse JSON in background isolate to prevent UI freezing
-      return compute(_parseCategories, response.body);
-    } else {
-      throw XTreamCodeClientException(
-        '''
-        Failed to retrieve Categories from action $action.
-        Server responded with the error code ${response.statusCode}.
-        ''',
-      );
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Raw JSON body methods
-  // ---------------------------------------------------------------------------
-  // These return the raw JSON response body as a String, avoiding the
-  // compute() isolate round-trip that copies 49K–158K parsed model objects
-  // back to the calling isolate. Callers can parse the JSON inline while
-  // building SQL args, eliminating the cross-isolate serialization cost.
-
-  /// Fetches live stream items and returns the raw JSON response body.
-  Future<String> livestreamItemsRawJson({
-    XTremeCodeCategory? category,
-  }) async {
-    var action = 'get_live_streams';
-    if (category != null) {
-      action = '$action&category_id=${category.categoryId}';
-    }
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
-    if (response.statusCode == 200) {
-      return response.body;
-    } else {
-      throw XTreamCodeClientException(
-        'Failed to retrieve LiveStreams from action $action. '
-        'Server responded with the error code ${response.statusCode}.',
-      );
-    }
-  }
-
-  /// Fetches VOD items and returns the raw JSON response body.
-  Future<String> vodItemsRawJson({
-    XTremeCodeCategory? category,
-  }) async {
-    var action = 'get_vod_streams';
-    if (category != null) {
-      action = '$action&category_id=${category.categoryId}';
-    }
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
-    if (response.statusCode == 200) {
-      return response.body;
-    } else {
-      throw XTreamCodeClientException(
-        'Failed to retrieve Vods from action $action. '
-        'Server responded with the error code ${response.statusCode}.',
-      );
-    }
-  }
-
-  /// Fetches series items and returns the raw JSON response body.
-  Future<String> seriesItemsRawJson({
-    XTremeCodeCategory? category,
-  }) async {
-    var action = 'get_series';
-    if (category != null) {
-      action = '$action&category_id=${category.categoryId}';
-    }
-    final response = await _http.get(Uri.parse('$_baseUrl&action=$action'));
-    if (response.statusCode == 200) {
-      return response.body;
-    } else {
-      throw XTreamCodeClientException(
-        'Failed to retrieve Series from action $action. '
-        'Server responded with the error code ${response.statusCode}.',
-      );
-    }
-  }
+  /// Loads full XMLTV EPG.
+  Future<EPG> epg() => _delegate.epg();
 }
 
-// Fetches EPG data from a given URL and parses it.
-Future<EPG> getEpgByUrl({required String url}) async {
+/// Fetches and parses XMLTV EPG data from an arbitrary URL.
+Future<EPG> getEpgByUrl({
+  required String url,
+  bool includeChannels = true,
+  ParserOptions parserOptions = const ParserOptions(),
+  ParseExecutor parseExecutor = const DefaultParseExecutor(),
+}) async {
   final response = await http.get(Uri.parse(url));
-
-  if (response.statusCode == 200) {
-    final xmlString = response.body;
-
-    final result = await compute(_parseEpgXml, (xmlString, true));
-
-    return result;
-  } else {
+  if (response.statusCode != 200) {
     throw XTreamCodeClientException(
       'Failed to fetch XMLTV data. Server responded with status code ${response.statusCode}.',
     );
   }
+
+  return parseExecutor.execute<String, EPG>(
+    input: response.body,
+    job: includeChannels ? _parseFullEpgWithChannels : parseFullEpg,
+    options: parserOptions,
+    payloadType: ParsePayloadType.xml,
+    payloadBytes: response.bodyBytes.length,
+  );
 }

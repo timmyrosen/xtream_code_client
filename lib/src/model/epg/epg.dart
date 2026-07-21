@@ -1,6 +1,5 @@
 // ignore_for_file: public_member_api_docs, lines_longer_than_80_chars, deprecated_member_use
 
-import 'package:flutter/foundation.dart';
 import 'package:xml/xml.dart';
 
 /// Represents the root element of an EPG (Electronic Program Guide) file.
@@ -185,7 +184,7 @@ class Programme {
           '${date.substring(0, 8)}T${date.substring(8)}$offset',
         );
       } catch (e) {
-        debugPrint('Error parsing date: $value');
+        // ignore invalid programme date values from malformed XMLTV sources.
         return null;
       }
     }
