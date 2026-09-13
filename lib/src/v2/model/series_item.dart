@@ -10,6 +10,7 @@ class SeriesItem {
     this.year,
     this.streamType,
     this.seriesId,
+    this.tmdbId,
     this.cover,
     this.plot,
     this.cast,
@@ -43,6 +44,9 @@ class SeriesItem {
 
   /// Series identifier used by `get_series_info`.
   final int? seriesId;
+
+  /// TMDB identifier when supplied by the provider.
+  final int? tmdbId;
 
   /// Cover image URL.
   final String? cover;

@@ -95,6 +95,7 @@ class XTremeCodeInfo {
     this.name,
     this.title,
     this.year,
+    this.tmdbId,
     this.cover,
     this.plot,
     this.cast,
@@ -128,6 +129,10 @@ class XTremeCodeInfo {
   final String? cover;
 
   /// The plot of the series.
+
+  /// The TMDB ID of the series when supplied by the provider.
+  @JsonKey(name: 'tmdb_id', fromJson: dynamicToIntConverter)
+  final int? tmdbId;
   final String? plot;
 
   /// The cast of the series.

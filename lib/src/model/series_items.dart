@@ -22,6 +22,7 @@ class XTremeCodeSeriesItem {
     required this.name,
     required this.title,
     required this.year,
+    this.tmdbId,
     required this.streamType,
     required this.seriesId,
     required this.cover,
@@ -41,6 +42,10 @@ class XTremeCodeSeriesItem {
   });
 
   /// Creates a [XTremeCodeSeriesItem] instance from a JSON map.
+
+  /// The TMDB ID of the series when supplied by the provider.
+  @JsonKey(name: 'tmdb_id', fromJson: dynamicToIntConverter)
+  final int? tmdbId;
   factory XTremeCodeSeriesItem.fromJson(Map<String, dynamic> json) =>
       _$XTremeCodeSeriesItemFromJson(json);
 

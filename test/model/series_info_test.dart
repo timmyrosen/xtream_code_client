@@ -22,6 +22,7 @@ void main() {
         'name': 'Some Series',
         'title': 'Some Series',
         'year': '1985',
+        'tmdb_id': '1399',
         'cover': 'https://someimage.com/cover.jpg',
         'plot': 'Some Plot',
         'cast': 'Some Cast',
@@ -87,6 +88,7 @@ void main() {
       expect(item.info.name, 'Some Series');
       expect(item.info.title, 'Some Series');
       expect(item.info.year, '1985');
+      expect(item.info.tmdbId, 1399);
       expect(item.info.cover, 'https://someimage.com/cover.jpg');
       expect(item.info.plot, 'Some Plot');
       expect(item.info.cast, 'Some Cast');
@@ -137,6 +139,7 @@ void main() {
           }
         ],
         'info': {
+          'tmdb_id': 1399,
           'last_modified': 1678845321,
           'rating': 8,
           'rating_5based': 4,
@@ -173,6 +176,7 @@ void main() {
       expect(season.id, 14542);
       expect(season.seasonNumber, 0);
       expect(item.info, isNotNull);
+      expect(item.info.tmdbId, 1399);
       expect(item.info.lastModified, dateTimeFromEpochSeconds(1678845321));
       expect(item.info.rating, 8);
       expect(item.info.rating5based, 4);

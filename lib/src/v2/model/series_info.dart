@@ -71,6 +71,7 @@ class SeriesDetails {
     this.name,
     this.title,
     this.year,
+    this.tmdbId,
     this.cover,
     this.plot,
     this.cast,
@@ -95,6 +96,9 @@ class SeriesDetails {
 
   /// Release year string.
   final String? year;
+
+  /// TMDB identifier when supplied by the provider.
+  final int? tmdbId;
 
   /// Cover image URL.
   final String? cover;

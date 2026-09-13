@@ -11,6 +11,13 @@ class VodMapper {
     ParseContext context,
     String jsonPath,
   ) {
+    final tmdbIdRaw = FieldAliases.resolve(
+      json,
+      <String>['tmdb_id', 'tmdbId', 'tmdb'],
+      context,
+      jsonPath,
+    );
+
     return VodItem(
       streamId: ValueParser.readInt(
         json,
@@ -84,6 +91,7 @@ class VodMapper {
         context,
         jsonPath,
       ),
+      tmdbId: ValueParser.asInt(tmdbIdRaw, context, '$jsonPath.tmdbId'),
       containerExtension: ValueParser.readString(
         json,
         'container_extension',

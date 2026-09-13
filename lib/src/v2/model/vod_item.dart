@@ -16,6 +16,7 @@ class VodItem {
     this.added,
     this.categoryId,
     this.categoryIds,
+    this.tmdbId,
     this.containerExtension,
     this.customSid,
     this.directSource,
@@ -56,6 +57,9 @@ class VodItem {
 
   /// Multi-category ids.
   final List<int>? categoryIds;
+
+  /// TMDB identifier when supplied by the provider.
+  final int? tmdbId;
 
   /// Container extension used for playback URLs.
   final String? containerExtension;

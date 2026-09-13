@@ -13,6 +13,7 @@ XTremeCodeSeriesItem _$XTremeCodeSeriesItemFromJson(
       name: json['name'] as String?,
       title: json['title'] as String?,
       year: json['year'] as String?,
+      tmdbId: dynamicToIntConverter(json['tmdb_id']),
       streamType: json['stream_type'] as String?,
       seriesId: dynamicToIntConverter(json['series_id']),
       cover: json['cover'] as String?,
@@ -34,6 +35,7 @@ XTremeCodeSeriesItem _$XTremeCodeSeriesItemFromJson(
 Map<String, dynamic> _$XTremeCodeSeriesItemToJson(
         XTremeCodeSeriesItem instance) =>
     <String, dynamic>{
+      'tmdb_id': instance.tmdbId,
       'num': instance.num,
       'name': instance.name,
       'title': instance.title,

@@ -17,6 +17,12 @@ class SeriesMapper {
       context,
       jsonPath,
     );
+    final tmdbIdRaw = FieldAliases.resolve(
+      json,
+      <String>['tmdb_id', 'tmdbId', 'tmdb'],
+      context,
+      jsonPath,
+    );
 
     return SeriesItem(
       num: ValueParser.readInt(
@@ -55,6 +61,7 @@ class SeriesMapper {
         context,
         jsonPath,
       ),
+      tmdbId: ValueParser.asInt(tmdbIdRaw, context, '$jsonPath.tmdbId'),
       cover: ValueParser.readString(
         json,
         'cover',
@@ -278,6 +285,12 @@ class SeriesMapper {
       context,
       jsonPath,
     );
+    final tmdbIdRaw = FieldAliases.resolve(
+      json,
+      <String>['tmdb_id', 'tmdbId', 'tmdb'],
+      context,
+      jsonPath,
+    );
 
     return SeriesDetails(
       name: ValueParser.readString(
@@ -298,6 +311,7 @@ class SeriesMapper {
         context,
         jsonPath,
       ),
+      tmdbId: ValueParser.asInt(tmdbIdRaw, context, '$jsonPath.tmdbId'),
       cover: ValueParser.readString(
         json,
         'cover',
